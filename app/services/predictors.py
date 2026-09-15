@@ -13,7 +13,7 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image, UnidentifiedImageError
 
-from app.config import CLASS_NAMES, IMG_SIZE, MODEL_PATH
+from app.constant import CLASS_NAMES, IMG_SIZE, MODEL_PATH
 
 if not MODEL_PATH.exists():
     raise FileNotFoundError(f"模型文件不存在: {MODEL_PATH}")

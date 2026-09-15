@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>花卉识别</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 520px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #1a1a2e;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 12px;
+            padding: 32px 16px;
+            cursor: pointer;
+            transition: border-color 0.3s, background 0.3s;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .upload-area:hover { border-color: #4a90d9; background: #f8faff; }
+        .upload-area.dragover { border-color: #4a90d9; background: #eef4ff; }
+        .upload-area.has-image { border-color: #52c41a; border-style: solid; }
+        .upload-icon { font-size: 40px; color: #999; margin-bottom: 8px; }
+        .upload-text { color: #666; font-size: 14px; }
+        .upload-text strong { color: #4a90d9; }
+        .upload-area input[type="file"] {
+            position: absolute; inset: 0; opacity: 0; cursor: pointer;
+        }
+        #preview {
+            max-width: 100%;
+            max-height: 240px;
+            border-radius: 8px;
+            display: none;
+            margin: 0 auto;
+        }
+        #predictBtn {
+            width: 100%;
+            padding: 12px;
+            background: #4a90d9;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-bottom: 20px;
+        }
+        #predictBtn:hover { background: #357abd; }
+        #predictBtn:disabled {
+            background: #b0c4de;
+            cursor: not-allowed;
+        }
+        .spinner {
+            display: inline-block;
+            width: 18px; height: 18px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #result {
+            display: none;
+            padding: 20px;
+            border-radius: 12px;
+            background: #f8faff;
+            text-align: left;
+        }
+        #result.show { display: block; }
+        .result-class {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-bottom: 4px;
+        }
+        .result-confidence {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 16px;
+        }
+        .score-bar { margin-bottom: 8px; }
+        .score-bar .label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 2px;
+        }
+        .score-bar .label .name { color: #333; }
+        .score-bar .label .value { color: #4a90d9; font-weight: 600; }
+        .bar-track {
+            height: 6px;
+            background: #e8e8e8;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a90d9, #7bb3e8);
+            border-radius: 3px;
+            transition: width 0.6s ease;
+        }
+        .bar-fill.top { background: linear-gradient(90deg, #52c41a, #73d13d); }
+        #errorMsg {
+            display: none;
+            color: #ff4d4f;
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        #errorMsg.show { display: block; }
+        .footer { margin-top: 16px; font-size: 12px; color: #bbb; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🌸 花卉识别</h1>
+        <p class="subtitle">上传花朵照片，AI 自动识别品种</p>
+
+        <div id="errorMsg"></div>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📷</div>
+            <div class="upload-text">
+                <strong>点击选择</strong> 或拖拽图片到此处
+                <br><span style="font-size:12px;color:#aaa;">支持 JPG / PNG</span>
+            </div>
+            <img id="preview" alt="预览" />
+            <input type="file" id="fileInput" accept="image/png,image/jpeg,image/jpg" />
+        </div>
+
+        <button id="predictBtn" disabled>识别花卉</button>
+
+        <div id="result">
+            <div class="result-class" id="resultClass"></div>
+            <div class="result-confidence" id="resultConfidence"></div>
+            <div id="scoreBars"></div>
+        </div>
+
+        <div class="footer">Powered by TensorFlow + Flask</div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const preview = document.getElementById('preview');
+        const predictBtn = document.getElementById('predictBtn');
+        const resultDiv = document.getElementById('result');
+        const resultClass = document.getElementById('resultClass');
+        const resultConfidence = document.getElementById('resultConfidence');
+        const scoreBars = document.getElementById('scoreBars');
+        const errorMsg = document.getElementById('errorMsg');
+
+        let selectedFile = null;
+
+        // 拖拽上传
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFile(files[0]);
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+        });
+
+        function handleFile(file) {
+            if (!file.type.match(/image\/(png|jpeg)/)) {
+                showError('请选择 JPG 或 PNG 格式的图片');
+                return;
+            }
+            selectedFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                uploadArea.querySelector('.upload-icon').style.display = 'none';
+                uploadArea.querySelector('.upload-text').style.display = 'none';
+                uploadArea.classList.add('has-image');
+            };
+            reader.readAsDataURL(file);
+            predictBtn.disabled = false;
+            hideError();
+            resultDiv.classList.remove('show');
+        }
+
+        predictBtn.addEventListener('click', predict);
+
+        async function predict() {
+            if (!selectedFile) return;
+
+            predictBtn.disabled = true;
+            predictBtn.innerHTML = '<span class="spinner"></span>识别中...';
+            hideError();
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+
+            try {
+                const res = await fetch('/api/predict', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (!data.ok) {
+                    showError(data.error || '识别失败');
+                    return;
+                }
+
+                showResult(data);
+            } catch (err) {
+                showError('网络错误，请确保服务已启动');
+            } finally {
+                predictBtn.disabled = false;
+                predictBtn.textContent = '识别花卉';
+            }
+        }
+
+        function showResult(data) {
+            resultClass.textContent = `🌼 ${data.class}`;
+            resultConfidence.textContent = `置信度：${(data.confidence * 100).toFixed(2)}%`;
+            resultDiv.classList.add('show');
+
+            scoreBars.innerHTML = '';
+            const entries = Object.entries(data.scores)
+                .sort((a, b) => b[1] - a[1]);
+
+            entries.forEach(([name, prob]) => {
+                const pct = (prob * 100).toFixed(1);
+                const isTop = name === data.class;
+                const bar = document.createElement('div');
+                bar.className = 'score-bar';
+                bar.innerHTML = `
+                    <div class="label">
+                        <span class="name">${name}</span>
+                        <span class="value">${pct}%</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill ${isTop ? 'top' : ''}" style="width:0%"></div>
+                    </div>
+                `;
+                scoreBars.appendChild(bar);
+                // 触发动画
+                requestAnimationFrame(() => {
+                    bar.querySelector('.bar-fill').style.width = (prob * 100) + '%';
+                });
+            });
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('show');
+        }
+
+        function hideError() {
+            errorMsg.classList.remove('show');
+        }
+    </script>
+</body>
+</html>
